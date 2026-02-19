@@ -1,0 +1,14 @@
+[package]
+name = "celestial-eop-data"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "Bundled IERS Earth Orientation Parameter data for astronomy"
+keywords = ["astronomy", "iers", "eop", "earth-orientation"]
+categories = ["science"]
+
+[dependencies]
+zstd = "0.13"
+
+[build-dependencies]
+zstd = "0.13"

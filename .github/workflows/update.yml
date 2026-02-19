@@ -1,0 +1,66 @@
+name: Update EOP Data
+
+on:
+  schedule:
+    - cron: '0 0 * * 0' # Sunday midnight UTC
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Download IERS C04 data
+        run: curl -sSf -o data/eopc04.1962-now https://hpiers.obspm.fr/iers/eop/eopc04/eopc04.1962-now
+
+      - name: Download IERS finals data
+        run: curl -sSf -o data/finals2000A.all https://datacenter.iers.org/data/9/finals2000A.all
+
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet data/; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build
+        if: steps.diff.outputs.changed == 'true'
+        run: cargo build
+
+      - name: Test
+        if: steps.diff.outputs.changed == 'true'
+        run: cargo test
+
+      - name: Bump patch version
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          current=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          IFS='.' read -r major minor patch <<< "$current"
+          next="$major.$minor.$((patch + 1))"
+          sed -i "s/^version = \"$current\"/version = \"$next\"/" Cargo.toml
+          echo "VERSION=$next" >> "$GITHUB_ENV"
+
+      - name: Commit and tag
+        if: steps.diff.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/ Cargo.toml
+          git commit -m "Update EOP data to $(date -u +%Y-%m-%d)"
+          git tag "v$VERSION"
+          git push origin HEAD --tags
+
+      - name: Publish to crates.io
+        if: steps.diff.outputs.changed == 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: cargo publish
